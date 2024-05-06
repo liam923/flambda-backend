@@ -35,6 +35,7 @@ module Layout = struct
     | Sort of 'sort
     | Any
     | Non_null_value
+    | Layout_of of 'type_expr
 
   type 'type_expr t = ('type_expr, Sort.t) layout
 end

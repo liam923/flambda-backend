@@ -396,6 +396,8 @@ module Layout = struct
 
   type nonrec 'sort layout = (type_expr, 'sort) layout
 
+  let layout_of_unimplemented = "unimplemented"
+
   module Const = struct
     type t = Sort.const layout
 
@@ -403,6 +405,7 @@ module Layout = struct
 
     let equal c1 c2 =
       match c1, c2 with
+      | Layout_of _, _ | _, Layout_of _ -> failwith layout_of_unimplemented
       | Sort s1, Sort s2 -> Sort.equal_const s1 s2
       | Any, Any -> true
       | Non_null_value, Non_null_value -> true
@@ -416,12 +419,14 @@ module Layout = struct
       | Non_null_value, Sort Value -> Less
       | (Any | Sort _), Non_null_value -> Not_le
       | (Any | Sort _ | Non_null_value), Sort _ -> Not_le
+      | Layout_of _, _ | _, Layout_of _ -> failwith layout_of_unimplemented
   end
 
   let max = Any
 
   let equate_or_equal ~allow_mutation t1 t2 =
     match t1, t2 with
+    | Layout_of _, _ | _, Layout_of _ -> failwith layout_of_unimplemented
     | Sort s1, Sort s2 -> (
       match Sort.equate_tracking_mutation s1 s2 with
       | (Equal_mutated_first | Equal_mutated_second) when not allow_mutation ->
@@ -442,6 +447,7 @@ module Layout = struct
     | Non_null_value, Sort s ->
       if Sort.equate s (Const Value) then Less else Not_le
     | Sort _, Non_null_value -> Not_le
+    | Layout_of _, _ | _, Layout_of _ -> failwith layout_of_unimplemented
 
   let intersection t1 t2 =
     match t1, t2 with
@@ -451,6 +457,7 @@ module Layout = struct
     | Non_null_value, Non_null_value -> Some Non_null_value
     | Sort s, Non_null_value | Non_null_value, Sort s ->
       if Sort.equate s (Const Value) then Some Non_null_value else None
+    | Layout_of _, _ | _, Layout_of _ -> failwith layout_of_unimplemented
 
   let of_new_sort_var () =
     let sort = Sort.new_var () in
@@ -475,6 +482,7 @@ module Layout = struct
       | Any -> fprintf ppf "Any"
       | Sort s -> fprintf ppf "Sort %a" Sort.Debug_printers.t s
       | Non_null_value -> fprintf ppf "Non_null_value"
+      | Layout_of _ -> failwith layout_of_unimplemented
   end
 end
 
@@ -571,6 +579,7 @@ module Const = struct
     | Sort Bits32, _ -> Bits32
     | Sort Bits64, _ -> Bits64
     | Non_null_value, _ -> Non_null_value
+    | Layout_of _, _ -> failwith Layout.layout_of_unimplemented
 
   (* CR layouts v2.8: do a better job here *)
   let to_string t = Legacy.string_of_const (to_legacy_jkind t)
@@ -775,6 +784,7 @@ module Jkind_desc = struct
       | Const s ->
         Const { layout = Sort s; modes_upper_bounds; externality_upper_bound }
       | Var v -> Var v)
+    | Layout_of _ -> failwith Layout.layout_of_unimplemented
 
   module Debug_printers = struct
     open Format
@@ -1112,6 +1122,7 @@ let get_default_value
       modes_upper_bounds;
       externality_upper_bound
     }
+  | Layout_of _ -> failwith Layout.layout_of_unimplemented
 
 let default_to_value t = ignore (get_default_value t)
 
@@ -1124,6 +1135,7 @@ let sort_of_jkind l =
   | Const { layout = Sort s; _ } -> Sort.of_const s
   | Const { layout = Non_null_value; _ } -> Sort.value
   | Const { layout = Any; _ } -> Misc.fatal_error "Jkind.sort_of_jkind"
+  | Const { layout = Layout_of _; _ } -> failwith Layout.layout_of_unimplemented
   | Var v -> Sort.of_var v
 
 let get_layout jk : Layout.Const.t option =
@@ -1132,6 +1144,7 @@ let get_layout jk : Layout.Const.t option =
   | Non_null_value -> Some Non_null_value
   | Sort s -> (
     match Sort.get s with Const s -> Some (Sort s) | Var _ -> None)
+  | Layout_of _ -> failwith Layout.layout_of_unimplemented
 
 let get_modal_upper_bounds jk = jk.jkind.modes_upper_bounds
 
