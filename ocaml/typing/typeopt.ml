@@ -122,7 +122,7 @@ type classification =
    Returning [Any] is safe, though may skip some optimizations. *)
 let classify env loc ty sort : classification =
   let ty = scrape_ty env ty in
-  match Jkind.(Sort.get_default_value sort) with
+  match Jkind.(Sort.default_to_value_and_get sort) with
   | Value -> begin
   if is_always_gc_ignorable env ty then Int
   else match get_desc ty with
@@ -234,7 +234,7 @@ let bigarray_type_kind_and_layout env typ =
       (Pbigarray_unknown, Pbigarray_unknown_layout)
 
 let value_kind_of_value_jkind jkind =
-  let const_jkind = Jkind.get_default_value jkind in
+  let const_jkind = Jkind.default_to_value_and_get jkind in
   let externality_upper_bound =
     Jkind.Const.get_externality_upper_bound const_jkind
   in
@@ -681,7 +681,7 @@ let[@inline always] layout_of_const_sort_generic ~value_kind ~error
 
 let layout env loc sort ty =
   layout_of_const_sort_generic
-    (Jkind.Sort.get_default_value sort)
+    (Jkind.Sort.default_to_value_and_get sort)
     ~value_kind:(lazy (value_kind env loc ty))
     ~error:(function
       | Value -> assert false
@@ -693,7 +693,7 @@ let layout env loc sort ty =
 
 let layout_of_sort loc sort =
   layout_of_const_sort_generic
-    (Jkind.Sort.get_default_value sort)
+    (Jkind.Sort.default_to_value_and_get sort)
     ~value_kind:(lazy Pgenval)
     ~error:(function
     | Value -> assert false

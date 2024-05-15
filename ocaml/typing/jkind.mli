@@ -291,14 +291,14 @@ end
     yet been determined. *)
 val get : t -> Desc.t
 
-(** [get_default_value] extracts the jkind as a `const`.  If it's a sort
+(** [default_to_value_and_get] extracts the jkind as a `const`.  If it's a sort
     variable, it is set to [value] first. *)
-val get_default_value : t -> Const.t
+val default_to_value_and_get : t -> Const.t
 
-(** [default_to_value t] is [ignore (get_default_value t)] *)
+(** [default_to_value t] is [ignore (default_to_value_and_get t)] *)
 val default_to_value : t -> unit
 
-(** [is_void t] is [Void = get_default_value t].  In particular, it will
+(** [is_void t] is [Void = default_to_value_and_get t].  In particular, it will
     default the jkind to value if needed to make this false. *)
 val is_void_defaulting : t -> bool
 (* CR layouts v5: When we have proper support for void, we'll want to change

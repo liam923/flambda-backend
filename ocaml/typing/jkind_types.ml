@@ -166,7 +166,7 @@ module Sort = struct
     | Bits32 -> memoized_bits32
     | Bits64 -> memoized_bits64
 
-  let rec get_default_value : t -> const = function
+  let rec default_to_value_and_get : t -> const = function
     | Const c -> c
     | Var r -> (
       match !r with
@@ -174,12 +174,12 @@ module Sort = struct
         set r memoized_value;
         Value
       | Some s ->
-        let result = get_default_value s in
+        let result = default_to_value_and_get s in
         set r (get_memoized result);
         (* path compression *)
         result)
 
-  let default_to_value t = ignore (get_default_value t)
+  let default_to_value t = ignore (default_to_value_and_get t)
 
   (***********************)
   (* equality *)

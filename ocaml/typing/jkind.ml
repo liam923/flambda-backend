@@ -354,7 +354,7 @@ module Const = struct
 
   let non_null_value = { value with layout = Non_null_value }
 
-  let to_string : t -> string = failwith "unimplemented"
+  let to_string _ = "unimplemented"
 
   let of_attribute : Builtin_attributes.jkind_attribute -> t = function
     | Immediate -> immediate
@@ -594,7 +594,7 @@ let bits64 ~why = fresh_jkind Jkind_desc.bits64 ~why:(Bits64_creation why)
 (* CR layouts: When everything is stable, remove this function. *)
 let get_required_layouts_level (_context : History.annotation_context)
     (_jkind : Const.t) : Language_extension.maturity =
-  failwith "unimplemented"
+  Stable
 
 (******************************)
 (* construction *)
@@ -694,7 +694,7 @@ let for_boxed_variant ~all_voids =
 (******************************)
 (* elimination and defaulting *)
 
-let get_default_value
+let default_to_value_and_get
     { jkind = { layout; modes_upper_bounds; externality_upper_bound }; _ } :
     Const.t =
   match layout with
@@ -702,12 +702,12 @@ let get_default_value
   | Non_null_value ->
     { layout = Non_null_value; modes_upper_bounds; externality_upper_bound }
   | Sort s ->
-    { layout = Sort (Sort.get_default_value s);
+    { layout = Sort (Sort.default_to_value_and_get s);
       modes_upper_bounds;
       externality_upper_bound
     }
 
-let default_to_value t = ignore (get_default_value t)
+let default_to_value t = ignore (default_to_value_and_get t)
 
 let get t = Jkind_desc.get t.jkind
 
@@ -1480,4 +1480,4 @@ let () =
 
 type annotation = Const.t * Jane_syntax.Jkind.annotation
 
-let get_default_value t = get_default_value t
+let default_to_value_and_get t = default_to_value_and_get t

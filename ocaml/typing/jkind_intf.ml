@@ -97,9 +97,9 @@ module type Sort = sig
       variable is unfilled. *)
   val is_void_defaulting : t -> bool
 
-  (** [get_default_value] extracts the sort as a `const`.  If it's a variable,
+  (** [default_to_value_and_get] extracts the sort as a `const`.  If it's a variable,
       it is set to [value] first. *)
-  val get_default_value : t -> Const.t
+  val default_to_value_and_get : t -> Const.t
 
   (** To record changes to sorts, for use with `Types.{snapshot, backtrack}` *)
   type change

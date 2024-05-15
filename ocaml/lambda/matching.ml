@@ -106,7 +106,7 @@ exception Error of Location.t * error
 let dbg = false
 
 let jkind_layout_default_to_value_and_check_not_void loc jkind =
-  match Jkind.(Const.get_layout @@ get_default_value jkind) with
+  match Jkind.(Const.get_layout @@ default_to_value_and_get jkind) with
   | Sort Void -> raise (Error (loc, Void_layout))
   | _ -> ()
 ;;

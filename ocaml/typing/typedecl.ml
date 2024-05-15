@@ -1111,7 +1111,7 @@ let check_representable ~why ~allow_unboxed env loc kloc typ =
      real need to rule that out - I just haven't had time to write tests for it
      yet. *)
   | Ok s -> begin
-      match Jkind.Sort.get_default_value s with
+      match Jkind.Sort.default_to_value_and_get s with
       (* All calls to this are part of [update_decl_jkind], which happens after
          all the defaulting, so we don't expect this actually defaults the
          sort - we just want the [const]. *)
@@ -1223,7 +1223,7 @@ module Element_repr = struct
   let classify env loc ty jkind =
     if is_float env ty then Float_element
     else
-      let const_jkind = Jkind.get_default_value jkind in
+      let const_jkind = Jkind.default_to_value_and_get jkind in
       let layout = Jkind.Const.get_layout const_jkind in
       let sort = Jkind.Layout.Const.get_sort layout in
       let externality_upper_bound =
@@ -2619,7 +2619,7 @@ let error_if_has_deep_native_repr_attributes core_type =
    In such cases, we raise an expection. *)
 let type_sort_external ~is_layout_poly ~why env loc typ =
   match Ctype.type_sort ~why env typ with
-  | Ok s -> Jkind.Sort.get_default_value s
+  | Ok s -> Jkind.Sort.default_to_value_and_get s
   | Error err ->
     let kloc =
       if is_layout_poly then External_with_layout_poly else External
