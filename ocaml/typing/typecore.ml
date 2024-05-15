@@ -9036,7 +9036,7 @@ and type_comprehension_expr
         (* CR layouts v4: When this changes from [value], you will also have to
            update the use of [transl_exp] in transl_array_comprehension.ml. See
            a companion CR layouts v4 at the point of interest in that file. *)
-        Jkind.value ~why:Jkind.Array_comprehension_element
+        Jkind.value ~why:Jkind.History.Array_comprehension_element
   in
   let element_ty =
     with_local_level_if_principal begin fun () ->

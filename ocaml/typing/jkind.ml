@@ -17,85 +17,6 @@ open Jkind_types
 
 [@@@warning "+9"]
 
-(* CR layouts v2.8: remove this *)
-module Legacy = struct
-  type const = Jkind_types.const =
-    | Any
-    | Value
-    | Void
-    | Immediate64
-    | Immediate
-    | Float64
-    | Float32
-    | Word
-    | Bits32
-    | Bits64
-    | Non_null_value
-
-  let const_of_attribute : Builtin_attributes.jkind_attribute -> _ = function
-    | Immediate -> Immediate
-    | Immediate64 -> Immediate64
-
-  (** The function name is suffixed with "unchecked" to suggest that
-    it doesn't check whether the layouts extension is enabled.
-    It should be inverse to [string_of_const].
-  *)
-  let const_of_user_written_annotation_unchecked :
-      Jane_syntax.Jkind.t -> const option = function
-    | Primitive_layout_or_abbreviation const -> (
-      let { txt = name; _ } =
-        (const : Jane_syntax.Jkind.Const.t :> _ Location.loc)
-      in
-      match name with
-      | "any" -> Some Any
-      | "value" -> Some Value
-      | "void" -> Some Void
-      | "immediate64" -> Some Immediate64
-      | "immediate" -> Some Immediate
-      | "float64" -> Some Float64
-      | "float32" -> Some Float32
-      | "word" -> Some Word
-      | "bits32" -> Some Bits32
-      | "bits64" -> Some Bits64
-      | "non_null_value" -> Some Non_null_value
-      | _ -> None)
-    | Default | Mod _ | With _ | Kind_of _ ->
-      Misc.fatal_error "XXX unimplemented"
-
-  let string_of_const const =
-    match const with
-    | Any -> "any"
-    | Value -> "value"
-    | Void -> "void"
-    | Immediate64 -> "immediate64"
-    | Immediate -> "immediate"
-    | Float64 -> "float64"
-    | Float32 -> "float32"
-    | Word -> "word"
-    | Bits32 -> "bits32"
-    | Bits64 -> "bits64"
-    | Non_null_value -> "non_null_value"
-
-  let equal_const c1 c2 =
-    match c1, c2 with
-    | Any, Any
-    | Immediate64, Immediate64
-    | Immediate, Immediate
-    | Void, Void
-    | Value, Value
-    | Float64, Float64
-    | Float32, Float32
-    | Word, Word
-    | Bits32, Bits32
-    | Bits64, Bits64
-    | Non_null_value, Non_null_value ->
-      true
-    | ( ( Any | Immediate64 | Immediate | Void | Value | Float64 | Float32
-        | Word | Bits32 | Bits64 | Non_null_value ),
-        _ ) ->
-      false
-end
-
 (* A *sort* is the information the middle/back ends need to be able to
    compile a manipulation (storing, passing, etc) of a runtime value. *)
 module Sort = Jkind_types.Sort
@@ -122,7 +43,7 @@ module Layout = struct
 
     let equal c1 c2 =
       match c1, c2 with
-      | Sort s1, Sort s2 -> Sort.equal_const s1 s2
+      | Sort s1, Sort s2 -> Sort.Const.equal s1 s2
       | Any, Any -> true
       | Non_null_value, Non_null_value -> true
       | (Any | Sort _ | Non_null_value), _ -> false
@@ -135,9 +56,34 @@ module Layout = struct
       | Non_null_value, Sort Value -> Less
       | (Any | Sort _), Non_null_value -> Not_le
       | (Any | Sort _ | Non_null_value), Sort _ -> Not_le
+
+    let value = Sort Sort.Const.value
+
+    let void = Sort Sort.Const.void
+
+    let float64 = Sort Sort.Const.float64
+
+    let float32 = Sort Sort.Const.float32
+
+    let word = Sort Sort.Const.word
+
+    let bits32 = Sort Sort.Const.bits32
+
+    let bits64 = Sort Sort.Const.bits64
+
+    let get_sort : t -> Sort.Const.t option = function
+      | Sort s -> Some s
+      | Non_null_value -> Some Value
+      | Any -> None
   end
 
-  let max = Any
+  type t = Sort.t layout
+
+  let of_const const : t =
+    match const with
+    | Sort s -> Sort (Const s)
+    | Any -> Any
+    | Non_null_value -> Non_null_value
 
   let equate_or_equal ~allow_mutation t1 t2 =
     match t1, t2 with
@@ -175,20 +121,6 @@ module Layout = struct
     let sort = Sort.new_var () in
     Sort sort, sort
 
-  let value = Sort Sort.value
-
-  let void = Sort Sort.void
-
-  let float64 = Sort Sort.float64
-
-  let float32 = Sort Sort.float32
-
-  let word = Sort Sort.word
-
-  let bits32 = Sort Sort.bits32
-
-  let bits64 = Sort Sort.bits64
-
   module Debug_printers = struct
     open Format
 
@@ -204,12 +136,6 @@ module Externality = struct
     | External
     | External64
     | Internal
-
-  (* CR layouts v2.8: Either use this or remove it *)
-  let _to_string = function
-    | External -> "external"
-    | External64 -> "external64"
-    | Internal -> "internal"
 
   let max = Internal
 
@@ -264,12 +190,42 @@ module Modes = struct
   let equal a b = Misc.Le_result.is_equal (less_or_equal a b)
 end
 
-module Const = struct
+module History = struct
+  include Jkind_intf.History
+
+  let has_imported_history t =
+    match t.history with Creation Imported -> true | _ -> false
+
+  let update_reason t reason = { t with history = Creation reason }
+end
+
+(* forward declare [Const.t] so we can use it for [Error.t] *)
+type const = type_expr Jkind_types.Const.t
+
+(******************************)
+(*** user errors ***)
+
+module Error = struct
   type t =
-    { layout : Layout.Const.t;
-      modes_upper_bounds : Modes.t;
-      externality_upper_bound : Externality.t
-    }
+    | Insufficient_level of
+        { jkind : const;
+          required_layouts_level : Language_extension.maturity
+        }
+    | Unknown_jkind of Jane_syntax.Jkind.t
+    | Multiple_jkinds of
+        { from_annotation : const;
+          from_attribute : const
+        }
+
+  exception User_error of Location.t * t
+end
+
+let raise ~loc err = raise (Error.User_error (loc, err))
+
+module Const = struct
+  open Jkind_types.Const
+
+  type t = const
 
   let max =
     { layout = Layout.Const.max;
@@ -277,25 +233,11 @@ module Const = struct
       externality_upper_bound = Externality.max
     }
 
-  (* CR layouts v2.8: remove this *)
-  let to_legacy_jkind
-      { layout; modes_upper_bounds = _; externality_upper_bound } : Legacy.const
-      =
-    match layout, externality_upper_bound with
-    | Any, _ -> Any
-    | Sort Value, Internal -> Value
-    | Sort Value, External64 -> Immediate64
-    | Sort Value, External -> Immediate
-    | Sort Void, _ -> Void
-    | Sort Float64, _ -> Float64
-    | Sort Float32, _ -> Float32
-    | Sort Word, _ -> Word
-    | Sort Bits32, _ -> Bits32
-    | Sort Bits64, _ -> Bits64
-    | Non_null_value, _ -> Non_null_value
+  let get_layout const = const.layout
 
-  (* CR layouts v2.8: do a better job here *)
-  let to_string t = Legacy.string_of_const (to_legacy_jkind t)
+  let get_modal_upper_bounds const = const.modes_upper_bounds
+
+  let get_externality_upper_bound const = const.externality_upper_bound
 
   let equal
       { layout = lay1;
@@ -323,6 +265,123 @@ module Const = struct
       [ Layout.Const.sub lay1 lay2;
         Modes.less_or_equal modes1 modes2;
         Externality.less_or_equal ext1 ext2 ]
+
+  let any = max
+
+  let value = { max with layout = Layout.Const.value }
+
+  let void =
+    { layout = Layout.Const.void;
+      modes_upper_bounds = Modes.max;
+      externality_upper_bound = Externality.min
+    }
+
+  (* [immediate64] describes types that are stored directly (no indirection)
+     on 64-bit platforms but indirectly on 32-bit platforms. The key question:
+     along which modes should a [immediate64] cross? As of today, all of them,
+     but the reasoning for each is independent and somewhat subtle:
+
+     * Locality: This is fine, because we do not have stack-allocation on
+     32-bit platforms. Thus mode-crossing is sound at any type on 32-bit,
+     including immediate64 types.
+
+     * Linearity: This is fine, because linearity matters only for function
+     types, and an immediate64 cannot be a function type and cannot store
+     one either.
+
+     * Uniqueness: This is fine, because uniqueness matters only for
+     in-place update, and no record supporting in-place update is an
+     immediate64. ([@@unboxed] records do not support in-place update.)
+
+     * Syncness: This is fine, because syncness matters only for function
+     types, and an immediate64 cannot be a function type and cannot store
+     one either.
+
+     * Contention: This is fine, because contention matters only for
+     types with mutable fields, and an immediate64 does not have immutable
+     fields.
+
+     In practice, the functor that creates immediate64s,
+     [Stdlib.Sys.Immediate64.Make], will require these conditions on its
+     argument. But the arguments that we expect here will have no trouble
+     meeting the conditions.
+  *)
+  let immediate64 =
+    { layout = Layout.Const.value;
+      modes_upper_bounds =
+        { locality = Global; linearity = Many; uniqueness = Unique };
+      externality_upper_bound = External64
+    }
+
+  let immediate =
+    { layout = Layout.Const.value;
+      modes_upper_bounds =
+        { locality = Global; linearity = Many; uniqueness = Unique };
+      externality_upper_bound = External
+    }
+
+  let float64 =
+    { layout = Layout.Const.float64;
+      modes_upper_bounds =
+        { locality = Global; linearity = Many; uniqueness = Unique };
+      externality_upper_bound = External
+    }
+
+  let float32 =
+    { layout = Layout.Const.float32;
+      modes_upper_bounds =
+        { locality = Global; linearity = Many; uniqueness = Unique };
+      externality_upper_bound = External
+    }
+
+  let word =
+    { layout = Layout.Const.word;
+      modes_upper_bounds = Modes.max;
+      externality_upper_bound = External
+    }
+
+  let bits32 =
+    { layout = Layout.Const.bits32;
+      modes_upper_bounds = Modes.max;
+      externality_upper_bound = External
+    }
+
+  let bits64 =
+    { layout = Layout.Const.bits64;
+      modes_upper_bounds = Modes.max;
+      externality_upper_bound = External
+    }
+
+  let non_null_value = { value with layout = Non_null_value }
+
+  let to_string : t -> string = failwith "unimplemented"
+
+  let of_attribute : Builtin_attributes.jkind_attribute -> t = function
+    | Immediate -> immediate
+    | Immediate64 -> immediate64
+
+  let of_user_written_annotation_unchecked : Jane_syntax.Jkind.t -> t option =
+    function
+    | Primitive_layout_or_abbreviation const -> (
+      let { txt = name; _ } =
+        (const : Jane_syntax.Jkind.Const.t :> _ Location.loc)
+      in
+      (* CR layouts 2.8: move this to predef *)
+      match name with
+      | "any" -> Some any
+      | "value" -> Some value
+      | "void" -> Some void
+      | "immediate64" -> Some immediate64
+      | "immediate" -> Some immediate
+      | "float64" -> Some float64
+      | "float32" -> Some float32
+      | "word" -> Some word
+      | "bits32" -> Some bits32
+      | "bits64" -> Some bits64
+      | "non_null_value" -> Some non_null_value
+      | _ -> None)
+    | Default | Mod _ | With _ | Kind_of _ ->
+      Misc.fatal_error "XXX unimplemented"
 end
 
 module Desc = struct
@@ -334,7 +393,7 @@ module Desc = struct
     let open Format in
     function
     | Const c -> fprintf ppf "%s" (Const.to_string c)
-    | Var v -> fprintf ppf "%s" (Sort.var_name v)
+    | Var v -> fprintf ppf "%s" (Sort.Var.name v)
 
   (* considers sort variables < Any. Two sort variables are in a [sub]
      relationship only when they are equal.
@@ -351,11 +410,14 @@ end
 module Jkind_desc = struct
   open Jkind_types.Jkind_desc
 
-  let max =
-    { layout = Layout.max;
-      modes_upper_bounds = Modes.max;
-      externality_upper_bound = Externality.max
+  let of_const
+      ({ layout; modes_upper_bounds; externality_upper_bound } : Const.t) =
+    { layout = Layout.of_const layout;
+      modes_upper_bounds;
+      externality_upper_bound
     }
+
+  let max = of_const Const.max
 
   let equate_or_equal ~allow_mutation
       { layout = lay1;
@@ -406,13 +468,9 @@ module Jkind_desc = struct
 
   let any = max
 
-  let value = { max with layout = Layout.value }
+  let value = of_const Const.value
 
-  let void =
-    { layout = Layout.void;
-      modes_upper_bounds = Modes.max;
-      externality_upper_bound = Externality.min
-    }
+  let void = of_const Const.void
 
   (* [immediate64] describes types that are stored directly (no indirection)
      on 64-bit platforms but indirectly on 32-bit platforms. The key question:
@@ -444,53 +502,19 @@ module Jkind_desc = struct
      argument. But the arguments that we expect here will have no trouble
      meeting the conditions.
   *)
-  let immediate64 =
-    { layout = Layout.value;
-      modes_upper_bounds =
-        { locality = Global; linearity = Many; uniqueness = Unique };
-      externality_upper_bound = External64
-    }
+  let immediate64 = of_const Const.immediate64
 
-  let immediate =
-    { layout = Layout.value;
-      modes_upper_bounds =
-        { locality = Global; linearity = Many; uniqueness = Unique };
-      externality_upper_bound = External
-    }
+  let immediate = of_const Const.immediate
 
-  let float64 =
-    { layout = Layout.float64;
-      modes_upper_bounds =
-        { locality = Global; linearity = Many; uniqueness = Unique };
-      externality_upper_bound = External
-    }
+  let float64 = of_const Const.float64
 
-  let float32 =
-    { layout = Layout.float32;
-      modes_upper_bounds =
-        { locality = Global; linearity = Many; uniqueness = Unique };
-      externality_upper_bound = External
-    }
+  let float32 = of_const Const.float32
 
-  let word =
-    { layout = Layout.word;
-      modes_upper_bounds = Modes.max;
-      externality_upper_bound = External
-    }
+  let word = of_const Const.word
 
-  let bits32 =
-    { layout = Layout.bits32;
-      modes_upper_bounds = Modes.max;
-      externality_upper_bound = External
-    }
+  let bits32 = of_const Const.bits32
 
-  let bits64 =
-    { layout = Layout.bits64;
-      modes_upper_bounds = Modes.max;
-      externality_upper_bound = External
-    }
-
-  let non_null_value = { value with layout = Non_null_value }
+  let bits64 = of_const Const.bits64
 
   (* Post-condition: If the result is [Var v], then [!v] is [None]. *)
   let get { layout; modes_upper_bounds; externality_upper_bound } : Desc.t =
@@ -517,9 +541,6 @@ module Jkind_desc = struct
   end
 end
 
-(* CR layouts v2.8: refactor not to be an [include], but a proper module *)
-include Jkind_intf.History
-
 type t = type_expr Jkind_types.t
 
 let fresh_jkind jkind ~why = { jkind; history = Creation why }
@@ -536,14 +557,14 @@ let value_v1_safety_check =
   }
 
 (* CR layouts: Should we be doing more memoization here? *)
-let any ~why =
+let any ~(why : History.any_creation_reason) =
   match why with
   | Dummy_jkind -> any_dummy_jkind (* share this one common case *)
   | _ -> fresh_jkind Jkind_desc.any ~why:(Any_creation why)
 
 let void ~why = fresh_jkind Jkind_desc.void ~why:(Void_creation why)
 
-let value ~(why : value_creation_reason) =
+let value ~(why : History.value_creation_reason) =
   match why with
   | V1_safety_check -> value_v1_safety_check
   | _ -> fresh_jkind Jkind_desc.value ~why:(Value_creation why)
@@ -564,23 +585,6 @@ let bits32 ~why = fresh_jkind Jkind_desc.bits32 ~why:(Bits32_creation why)
 
 let bits64 ~why = fresh_jkind Jkind_desc.bits64 ~why:(Bits64_creation why)
 
-(******************************)
-(*** user errors ***)
-type error =
-  | Insufficient_level of
-      { jkind : Legacy.const;
-        required_layouts_level : Language_extension.maturity
-      }
-  | Unknown_jkind of Jane_syntax.Jkind.t
-  | Multiple_jkinds of
-      { from_annotation : Legacy.const;
-        from_attribute : Legacy.const
-      }
-
-exception User_error of Location.t * error
-
-let raise ~loc err = raise (User_error (loc, err))
-
 (*** extension requirements ***)
 (* The [annotation_context] parameter can be used to allow annotations / kinds
    in different contexts to be enabled with different extension settings.
@@ -588,14 +592,9 @@ let raise ~loc err = raise (User_error (loc, err))
    parameter might effectively be unused.
 *)
 (* CR layouts: When everything is stable, remove this function. *)
-let get_required_layouts_level (context : annotation_context)
-    (jkind : Legacy.const) : Language_extension.maturity =
-  match context, jkind with
-  | ( _,
-      ( Value | Immediate | Immediate64 | Any | Float64 | Float32 | Word
-      | Bits32 | Bits64 ) ) ->
-    Stable
-  | _, (Void | Non_null_value) -> Alpha
+let get_required_layouts_level (_context : History.annotation_context)
+    (_jkind : Const.t) : Language_extension.maturity =
+  failwith "unimplemented"
 
 (******************************)
 (* construction *)
@@ -607,21 +606,18 @@ let of_new_sort_var ~why =
 let of_new_sort ~why = fst (of_new_sort_var ~why)
 
 (* CR layouts v2.8: remove this function *)
-let of_const ~why : Legacy.const -> t = function
-  | Any -> fresh_jkind Jkind_desc.any ~why
-  | Immediate -> fresh_jkind Jkind_desc.immediate ~why
-  | Immediate64 -> fresh_jkind Jkind_desc.immediate64 ~why
-  | Value -> fresh_jkind Jkind_desc.value ~why
-  | Void -> fresh_jkind Jkind_desc.void ~why
-  | Float64 -> fresh_jkind Jkind_desc.float64 ~why
-  | Float32 -> fresh_jkind Jkind_desc.float32 ~why
-  | Word -> fresh_jkind Jkind_desc.word ~why
-  | Bits32 -> fresh_jkind Jkind_desc.bits32 ~why
-  | Bits64 -> fresh_jkind Jkind_desc.bits64 ~why
-  | Non_null_value -> fresh_jkind Jkind_desc.non_null_value ~why
+let of_const ~why
+    ({ layout; modes_upper_bounds; externality_upper_bound } : Const.t) =
+  { jkind =
+      { layout = Layout.of_const layout;
+        modes_upper_bounds;
+        externality_upper_bound
+      };
+    history = Creation why
+  }
 
 let const_of_user_written_annotation ~context Location.{ loc; txt = annot } =
-  match Legacy.const_of_user_written_annotation_unchecked annot with
+  match Const.of_user_written_annotation_unchecked annot with
   | None -> raise ~loc (Unknown_jkind annot)
   | Some const ->
     let required_layouts_level = get_required_layouts_level context const in
@@ -645,7 +641,7 @@ let of_annotation_option_default ~default ~context =
 
 let of_attribute ~context
     (attribute : Builtin_attributes.jkind_attribute Location.loc) =
-  let const = Legacy.const_of_attribute attribute.txt in
+  let const = Const.of_attribute attribute.txt in
   of_annotated_const ~context ~const ~const_loc:attribute.loc, const
 
 let of_type_decl ~context (decl : Parsetree.type_declaration) =
@@ -739,16 +735,9 @@ let get_externality_upper_bound jk = jk.jkind.externality_upper_bound
 (* pretty printing *)
 
 let to_string jkind =
-  match get jkind with Const c -> Const.to_string c | Var v -> Sort.var_name v
+  match get jkind with Const c -> Const.to_string c | Var v -> Sort.Var.name v
 
 let format ppf t = Format.fprintf ppf "%s" (to_string t)
-
-(***********************************)
-(* jkind histories *)
-let has_imported_history t =
-  match t.history with Creation Imported -> true | _ -> false
-
-let update_reason t reason = { t with history = Creation reason }
 
 let printtyp_path = ref (fun _ _ -> assert false)
 
@@ -826,7 +815,7 @@ end = struct
     let to_ordinal num = Int.to_string num ^ Misc.ordinal_suffix num in
     match arity with 1 -> "" | _ -> to_ordinal position ^ " "
 
-  let format_concrete_jkind_reason ppf : concrete_jkind_reason -> unit =
+  let format_concrete_jkind_reason ppf : History.concrete_jkind_reason -> unit =
     function
     | Match -> fprintf ppf "a value of this type is matched against a pattern"
     | Constructor_declaration _ ->
@@ -863,7 +852,8 @@ end = struct
          representable at call sites)"
     | Array_element -> fprintf ppf "it's the type of an array element"
 
-  let rec format_annotation_context ppf : annotation_context -> unit = function
+  let rec format_annotation_context ppf : History.annotation_context -> unit =
+    function
     | Type_declaration p ->
       fprintf ppf "the declaration of the type %a" !printtyp_path p
     | Type_parameter (path, var) ->
@@ -883,7 +873,8 @@ end = struct
       (* message gets printed in [format_flattened_history] so we ignore it here *)
       format_annotation_context ppf context
 
-  let format_any_creation_reason ppf : any_creation_reason -> unit = function
+  let format_any_creation_reason ppf : History.any_creation_reason -> unit =
+    function
     | Missing_cmi p ->
       fprintf ppf "the .cmi file for %a is missing" !printtyp_path p
     | Wildcard -> format_with_notify_js ppf "there's a _ in the type"
@@ -903,8 +894,8 @@ end = struct
     | Array_type_argument ->
       fprintf ppf "it's the type argument to the array type"
 
-  let format_immediate_creation_reason ppf : immediate_creation_reason -> _ =
-    function
+  let format_immediate_creation_reason ppf :
+      History.immediate_creation_reason -> _ = function
     | Empty_record ->
       fprintf ppf "it's a record type containing all void elements"
     | Enumeration ->
@@ -916,11 +907,13 @@ end = struct
       fprintf ppf
         "it's an enumeration variant type (all constructors are constant)"
 
-  let format_immediate64_creation_reason ppf = function
+  let format_immediate64_creation_reason ppf :
+      History.immediate64_creation_reason -> _ = function
     | Separability_check ->
       fprintf ppf "the check that a type is definitely not `float`"
 
-  let format_value_creation_reason ppf : value_creation_reason -> _ = function
+  let format_value_creation_reason ppf : History.value_creation_reason -> _ =
+    function
     | Class_let_binding ->
       fprintf ppf "it's the type of a let-bound variable in a class expression"
     | Tuple_element -> fprintf ppf "it's the type of a tuple element"
@@ -985,29 +978,32 @@ end = struct
         "unknown @[(please alert the Jane Street@;\
          compilers team with this message: %s)@]" s
 
-  let format_float64_creation_reason ppf : float64_creation_reason -> _ =
-    function
+  let format_float64_creation_reason ppf : History.float64_creation_reason -> _
+      = function
     | Primitive id ->
       fprintf ppf "it is the primitive float64 type %s" (Ident.name id)
 
-  let format_float32_creation_reason ppf : float32_creation_reason -> _ =
-    function
+  let format_float32_creation_reason ppf : History.float32_creation_reason -> _
+      = function
     | Primitive id ->
       fprintf ppf "it is the primitive float32 type %s" (Ident.name id)
 
-  let format_word_creation_reason ppf : word_creation_reason -> _ = function
+  let format_word_creation_reason ppf : History.word_creation_reason -> _ =
+    function
     | Primitive id ->
       fprintf ppf "it is the primitive word type %s" (Ident.name id)
 
-  let format_bits32_creation_reason ppf : bits32_creation_reason -> _ = function
+  let format_bits32_creation_reason ppf : History.bits32_creation_reason -> _ =
+    function
     | Primitive id ->
       fprintf ppf "it is the primitive bits32 type %s" (Ident.name id)
 
-  let format_bits64_creation_reason ppf : bits64_creation_reason -> _ = function
+  let format_bits64_creation_reason ppf : History.bits64_creation_reason -> _ =
+    function
     | Primitive id ->
       fprintf ppf "it is the primitive bits64 type %s" (Ident.name id)
 
-  let format_creation_reason ppf : creation_reason -> unit = function
+  let format_creation_reason ppf : History.creation_reason -> unit = function
     | Annotated (ctx, _) ->
       fprintf ppf "of the annotation on %a" format_annotation_context ctx
     | Missing_cmi p ->
@@ -1039,7 +1035,7 @@ end = struct
       fprintf ppf "of the definition%a at %a" format_id id
         Location.print_loc_in_lowercase loc
 
-  let format_interact_reason ppf = function
+  let format_interact_reason ppf : History.interact_reason -> _ = function
     | Gadt_equation name ->
       fprintf ppf "a GADT match on the constructor %a" !printtyp_path name
     | Tyvar_refinement_intersection -> fprintf ppf "updating a type variable"
@@ -1264,7 +1260,8 @@ let is_any jkind = match jkind.jkind.layout with Any -> true | _ -> false
 module Debug_printers = struct
   open Format
 
-  let concrete_jkind_reason ppf : concrete_jkind_reason -> unit = function
+  let concrete_jkind_reason ppf : History.concrete_jkind_reason -> unit =
+    function
     | Match -> fprintf ppf "Match"
     | Constructor_declaration idx ->
       fprintf ppf "Constructor_declaration %d" idx
@@ -1287,7 +1284,7 @@ module Debug_printers = struct
     | Layout_poly_in_external -> fprintf ppf "Layout_poly_in_external"
     | Array_element -> fprintf ppf "Array_element"
 
-  let rec annotation_context ppf : annotation_context -> unit = function
+  let rec annotation_context ppf : History.annotation_context -> unit = function
     | Type_declaration p -> fprintf ppf "Type_declaration %a" Path.print p
     | Type_parameter (p, var) ->
       fprintf ppf "Type_parameter (%a, %a)" Path.print p
@@ -1304,7 +1301,7 @@ module Debug_printers = struct
       fprintf ppf "With_error_message (%s, %a)" message annotation_context
         context
 
-  let any_creation_reason ppf : any_creation_reason -> unit = function
+  let any_creation_reason ppf : History.any_creation_reason -> unit = function
     | Missing_cmi p -> fprintf ppf "Missing_cmi %a" Path.print p
     | Initial_typedecl_env -> fprintf ppf "Initial_typedecl_env"
     | Dummy_jkind -> fprintf ppf "Dummy_jkind"
@@ -1314,17 +1311,19 @@ module Debug_printers = struct
     | Unification_var -> fprintf ppf "Unification_var"
     | Array_type_argument -> fprintf ppf "Array_type_argument"
 
-  let immediate_creation_reason ppf : immediate_creation_reason -> _ = function
+  let immediate_creation_reason ppf : History.immediate_creation_reason -> _ =
+    function
     | Empty_record -> fprintf ppf "Empty_record"
     | Enumeration -> fprintf ppf "Enumeration"
     | Primitive id -> fprintf ppf "Primitive %s" (Ident.unique_name id)
     | Immediate_polymorphic_variant ->
       fprintf ppf "Immediate_polymorphic_variant"
 
-  let immediate64_creation_reason ppf = function
+  let immediate64_creation_reason ppf : History.immediate64_creation_reason -> _
+      = function
     | Separability_check -> fprintf ppf "Separability_check"
 
-  let value_creation_reason ppf : value_creation_reason -> _ = function
+  let value_creation_reason ppf : History.value_creation_reason -> _ = function
     | Class_let_binding -> fprintf ppf "Class_let_binding"
     | Tuple_element -> fprintf ppf "Tuple_element"
     | Probe -> fprintf ppf "Probe"
@@ -1362,22 +1361,26 @@ module Debug_printers = struct
     | Recmod_fun_arg -> fprintf ppf "Recmod_fun_arg"
     | Unknown s -> fprintf ppf "Unknown %s" s
 
-  let float64_creation_reason ppf : float64_creation_reason -> _ = function
+  let float64_creation_reason ppf : History.float64_creation_reason -> _ =
+    function
     | Primitive id -> fprintf ppf "Primitive %s" (Ident.unique_name id)
 
-  let float32_creation_reason ppf : float32_creation_reason -> _ = function
+  let float32_creation_reason ppf : History.float32_creation_reason -> _ =
+    function
     | Primitive id -> fprintf ppf "Primitive %s" (Ident.unique_name id)
 
-  let word_creation_reason ppf : word_creation_reason -> _ = function
+  let word_creation_reason ppf : History.word_creation_reason -> _ = function
     | Primitive id -> fprintf ppf "Primitive %s" (Ident.unique_name id)
 
-  let bits32_creation_reason ppf : bits32_creation_reason -> _ = function
+  let bits32_creation_reason ppf : History.bits32_creation_reason -> _ =
+    function
     | Primitive id -> fprintf ppf "Primitive %s" (Ident.unique_name id)
 
-  let bits64_creation_reason ppf : bits64_creation_reason -> _ = function
+  let bits64_creation_reason ppf : History.bits64_creation_reason -> _ =
+    function
     | Primitive id -> fprintf ppf "Primitive %s" (Ident.unique_name id)
 
-  let creation_reason ppf : creation_reason -> unit = function
+  let creation_reason ppf : History.creation_reason -> unit = function
     | Annotated (ctx, loc) ->
       fprintf ppf "Annotated (%a,%a)" annotation_context ctx Location.print_loc
         loc
@@ -1412,7 +1415,7 @@ module Debug_printers = struct
         (match id with Some id -> Ident.unique_name id | None -> "")
         Location.print_loc loc
 
-  let interact_reason ppf = function
+  let interact_reason ppf : History.interact_reason -> _ = function
     | Gadt_equation p -> fprintf ppf "Gadt_equation %a" Path.print p
     | Tyvar_refinement_intersection ->
       fprintf ppf "Tyvar_refinement_intersection"
@@ -1433,7 +1436,7 @@ module Debug_printers = struct
 end
 
 (*** formatting user errors ***)
-let report_error ~loc = function
+let report_error ~loc : Error.t -> _ = function
   | Unknown_jkind jkind ->
     Location.errorf ~loc
       (* CR layouts v2.9: use the context to produce a better error message.
@@ -1445,8 +1448,8 @@ let report_error ~loc = function
       "@[<v>A type declaration's layout can be given at most once.@;\
        This declaration has an layout annotation (%s) and a layout attribute \
        ([@@@@%s]).@]"
-      (Legacy.string_of_const from_annotation)
-      (Legacy.string_of_const from_attribute)
+      (Const.to_string from_annotation)
+      (Const.to_string from_attribute)
   | Insufficient_level { jkind; required_layouts_level } -> (
     let hint ppf =
       Format.fprintf ppf "You must enable -extension %s to use this feature."
@@ -1465,44 +1468,16 @@ let report_error ~loc = function
         "@[<v>Layout %s is more experimental than allowed by the enabled \
          layouts extension.@;\
          %t@]"
-        (Legacy.string_of_const jkind)
-        hint)
+        (Const.to_string jkind) hint)
 
 let () =
   Location.register_error_of_exn (function
-    | User_error (loc, err) -> Some (report_error ~loc err)
+    | Error.User_error (loc, err) -> Some (report_error ~loc err)
     | _ -> None)
 
 (* CR layouts v2.8: Remove the definitions below by propagating changes
    outside of this file. *)
 
-type const = Legacy.const =
-  | Any
-  | Value
-  | Void
-  | Immediate64
-  | Immediate
-  | Float64
-  | Float32
-  | Word
-  | Bits32
-  | Bits64
-  | Non_null_value
+type annotation = Const.t * Jane_syntax.Jkind.annotation
 
-type annotation = const * Jane_syntax.Jkind.annotation
-
-let string_of_const = Legacy.string_of_const
-
-let equal_const = Legacy.equal_const
-
-type desc =
-  | Const of const
-  | Var of Sort.var
-
-let to_legacy_desc : Desc.t -> desc = function
-  | Const c -> Const (Const.to_legacy_jkind c)
-  | Var v -> Var v
-
-let get t = to_legacy_desc (get t)
-
-let get_default_value t = Const.to_legacy_jkind (get_default_value t)
+let get_default_value t = get_default_value t

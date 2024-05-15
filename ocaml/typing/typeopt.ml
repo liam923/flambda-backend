@@ -234,13 +234,16 @@ let bigarray_type_kind_and_layout env typ =
       (Pbigarray_unknown, Pbigarray_unknown_layout)
 
 let value_kind_of_value_jkind jkind =
-  match Jkind.get_default_value jkind with
-  | Value -> Pgenval
-  | Immediate -> Pintval
-  | Immediate64 ->
+  let const_jkind = Jkind.get_default_value jkind in
+  let externality_upper_bound =
+    Jkind.Const.get_externality_upper_bound const_jkind
+  in
+  (* CR: assert the sort is a value *)
+  match externality_upper_bound with
+  | External -> Pintval
+  | External64 ->
     if !Clflags.native_code && Sys.word_size = 64 then Pintval else Pgenval
-  | Non_null_value -> Pgenval
-  | Any | Void | Float64 | Float32 | Word | Bits32 | Bits64 -> assert false
+  | Internal -> Pgenval
 
 (* [value_kind] has a pre-condition that it is only called on values.  With the
    current set of sort restrictions, there are two reasons this invariant may
@@ -706,7 +709,7 @@ let layout_of_const_sort s =
     ~value_kind:(lazy Pgenval)
     ~error:(fun const ->
       Misc.fatal_errorf "layout_of_const_sort: %a encountered"
-        Jkind.Sort.format_const const)
+        Jkind.Sort.Const.format const)
 
 let function_return_layout env loc sort ty =
   match is_function_type env ty with
@@ -852,7 +855,7 @@ let report_error ppf = function
         (Jkind.Violation.report_with_offender
            ~offender:(fun ppf -> Printtyp.type_expr ppf ty)) err
   | Unsupported_sort const ->
-      fprintf ppf "Layout %a is not supported yet." Jkind.Sort.format_const const
+      fprintf ppf "Layout %a is not supported yet." Jkind.Sort.Const.format const
 
 let () =
   Location.register_error_of_exn

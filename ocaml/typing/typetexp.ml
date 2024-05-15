@@ -119,7 +119,7 @@ module TyVarEnv : sig
   (* a version of [make_poly_univars_jkinds] that doesn't take jkinds *)
 
   val make_poly_univars_jkinds :
-    context:(string -> Jkind.annotation_context) ->
+    context:(string -> Jkind.History.annotation_context) ->
     (string Location.loc * Jane_syntax.Jkind.annotation option) list -> poly_univars
   (* see mli file *)
 
@@ -624,7 +624,7 @@ let transl_label_from_pat (label : Parsetree.arg_label)
 
 let enrich_with_attributes attrs annotation_context =
   match Builtin_attributes.error_message_attr attrs with
-  | Some msg -> Jkind.With_error_message (msg, annotation_context)
+  | Some msg -> Jkind.History.With_error_message (msg, annotation_context)
   | None -> annotation_context
 
 let jkind_of_annotation annotation_context attrs jkind =
@@ -738,7 +738,7 @@ and transl_type_aux env ~row_context ~aliased ~policy mode styp =
       List.iteri
         (fun idx ((sty, cty), ty') ->
            begin match Types.get_desc ty' with
-           | Tvar {jkind; _} when Jkind.has_imported_history jkind ->
+           | Tvar {jkind; _} when Jkind.History.has_imported_history jkind ->
              (* In case of a Tvar with imported jkind history, we can improve
                 the jkind reason using the in scope [path] to the parent type.
 
@@ -746,9 +746,9 @@ and transl_type_aux env ~row_context ~aliased ~policy mode styp =
                 of a performance impact: compiling [types.ml] resulted in 13k
                 extra alloc (~0.01% increase) and building the core library had
                 no statistically significant increase in build time. *)
-             let reason = Jkind.Imported_type_argument
+             let reason = Jkind.History.Imported_type_argument
                             {parent_path = path; position = idx + 1; arity} in
-             Types.set_var_jkind ty' (Jkind.update_reason jkind reason)
+             Types.set_var_jkind ty' (Jkind.History.update_reason jkind reason)
            | _ -> ()
            end;
            try unify_param env ty' cty.ctyp_type with Unify err ->
@@ -1463,7 +1463,7 @@ let report_error env ppf = function
         (Jkind.format_history ~intro:(
           dprintf "But it was inferred to have %t"
             (fun ppf -> match Jkind.get inferred_jkind with
-            | Const c -> fprintf ppf "layout %s" (Jkind.string_of_const c)
+            | Const c -> fprintf ppf "layout %s" (Jkind.Const.to_string c)
             | Var _ -> fprintf ppf "a representable layout")))
         inferred_jkind
   | Multiple_constraints_on_type s ->

@@ -2198,7 +2198,7 @@ let constrain_type_jkind ~fixed env ty jkind =
   | Missing_cmi (ty_jkind, missing_cmi) ->
     Error Jkind.(Violation.of_ ~missing_cmi
       (Not_a_subjkind
-         (update_reason ty_jkind (Missing_cmi missing_cmi), jkind)))
+         (History.update_reason ty_jkind (Missing_cmi missing_cmi), jkind)))
   | Failure ty_jkind ->
     Error (Jkind.Violation.of_ (Not_a_subjkind (ty_jkind, jkind)))
 
@@ -2343,13 +2343,13 @@ let check_and_update_generalized_ty_jkind ?name ~loc ty =
       | Tvar ({ jkind; _ } as r) ->
         immediacy_check jkind;
         let new_jkind =
-          Jkind.(update_reason jkind (Generalized (name, loc)))
+          Jkind.(History.update_reason jkind (Generalized (name, loc)))
         in
         set_type_desc ty (Tvar {r with jkind = new_jkind})
       | Tunivar ({ jkind; _ } as r) ->
         immediacy_check jkind;
         let new_jkind =
-          Jkind.(update_reason jkind (Generalized (name, loc)))
+          Jkind.(History.update_reason jkind (Generalized (name, loc)))
         in
         set_type_desc ty (Tunivar {r with jkind = new_jkind})
       | _ -> ()

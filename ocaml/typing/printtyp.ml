@@ -1259,7 +1259,7 @@ let out_jkind_option_of_jkind jkind =
   | Const jkind -> Some (Olay_const jkind)
   | Var v -> (* This handles (X1). *)
     if !Clflags.verbose_types
-    then Some (Olay_var (Jkind.Sort.var_name v))
+    then Some (Olay_var (Jkind.Sort.Var.name v))
     else None
 
 let alias_nongen_row mode px ty =

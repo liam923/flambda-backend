@@ -194,7 +194,7 @@ let predef_jkind_annotation const =
           printing/untypeast.
        *)
        let user_written : _ Location.loc =
-         let name = Jkind.string_of_const const in
+         let name = Jkind.Const.to_string const in
          Jane_syntax.Jkind.(
            Primitive_layout_or_abbreviation
              (Const.mk name Location.none))
@@ -279,12 +279,19 @@ let build_initial_env add_type add_extension empty_env =
   in
   let add_extension id args jkinds =
     Array.iter (fun jkind ->
+        let raise_error () = Misc.fatal_error
+            "sanity check failed: non-value jkind in predef extension \
+             constructor; should this have Constructor_mixed shape?" in
         match Jkind.get jkind with
-        | Const Value -> ()
-        | _ ->
-            Misc.fatal_error
-              "sanity check failed: non-value jkind in predef extension \
-               constructor; should this have Constructor_mixed shape?")
+        | Const const ->
+            begin
+              match Jkind.Const.get_layout const with
+              | Sort Value -> ()
+              | Non_null_value | Any
+              | Sort (Void | Float32 | Float64 | Word | Bits32 | Bits64) ->
+                  raise_error ()
+            end
+        | _ -> raise_error ())
       jkinds;
     add_extension id
       { ext_type_path = path_exn;
@@ -318,7 +325,7 @@ let build_initial_env add_type add_extension empty_env =
                    Constructor_uniform_value, [| |] |])
        ~jkind:(Jkind.immediate ~why:Enumeration)
   |> add_type ident_char ~jkind:(Jkind.immediate ~why:(Primitive ident_char))
-      ~jkind_annotation:Immediate
+      ~jkind_annotation:Jkind.Const.immediate
   |> add_type ident_exn
        ~kind:Type_open
        ~jkind:(Jkind.value ~why:Extensible_variant)
@@ -326,7 +333,7 @@ let build_initial_env add_type add_extension empty_env =
   |> add_type ident_float
   |> add_type ident_floatarray
   |> add_type ident_int ~jkind:(Jkind.immediate ~why:(Primitive ident_int))
-      ~jkind_annotation:Immediate
+      ~jkind_annotation:Jkind.Const.immediate
   |> add_type ident_int32
   |> add_type ident_int64
   |> add_type1 ident_lazy_t
@@ -387,16 +394,16 @@ let build_initial_env add_type add_extension empty_env =
   |> add_type ident_string
   |> add_type ident_unboxed_float
        ~jkind:(Jkind.float64 ~why:(Primitive ident_unboxed_float))
-       ~jkind_annotation:Float64
+       ~jkind_annotation:Jkind.Const.float64
   |> add_type ident_unboxed_nativeint
        ~jkind:(Jkind.word ~why:(Primitive ident_unboxed_nativeint))
-       ~jkind_annotation:Word
+       ~jkind_annotation:Jkind.Const.word
   |> add_type ident_unboxed_int32
        ~jkind:(Jkind.bits32 ~why:(Primitive ident_unboxed_int32))
-       ~jkind_annotation:Bits32
+       ~jkind_annotation:Jkind.Const.bits32
   |> add_type ident_unboxed_int64
        ~jkind:(Jkind.bits64 ~why:(Primitive ident_unboxed_int64))
-       ~jkind_annotation:Bits64
+       ~jkind_annotation:Jkind.Const.bits64
   |> add_type ident_bytes
   |> add_type ident_unit
        ~kind:(variant
@@ -442,7 +449,7 @@ let add_small_number_extension_types add_type env =
   |> add_type ident_float32
   |> add_type ident_unboxed_float32
        ~jkind:(Jkind.float32 ~why:(Primitive ident_unboxed_float32))
-       ~jkind_annotation:Float32
+       ~jkind_annotation:Jkind.Const.float32
 
 let builtin_values =
   List.map (fun id -> (Ident.name id, id)) all_predef_exns

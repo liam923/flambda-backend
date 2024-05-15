@@ -82,6 +82,10 @@ module Layout : sig
     | Any
     | Non_null_value
 
+  module Const : sig
+    type 'type_expr t = ('type_expr, Sort.const) layout
+  end
+
   type 'type_expr t = ('type_expr, Sort.t) layout
 end
 
@@ -102,19 +106,6 @@ module Jkind_desc : sig
     }
 end
 
-type const =
-  | Any
-  | Value
-  | Void
-  | Immediate64
-  | Immediate
-  | Float64
-  | Float32
-  | Word
-  | Bits32
-  | Bits64
-  | Non_null_value
-
 type 'type_expr history =
   | Interact of
       { reason : Jkind_intf.History.interact_reason;
@@ -130,4 +121,12 @@ type 'type_expr t =
     history : 'type_expr history
   }
 
-type annotation = const * Jane_syntax.Jkind.annotation
+module Const : sig
+  type 'type_expr t =
+    { layout : 'type_expr Layout.Const.t;
+      modes_upper_bounds : Modes.t;
+      externality_upper_bound : Externality.t
+    }
+end
+
+type 'type_expr annotation = 'type_expr Const.t * Jane_syntax.Jkind.annotation

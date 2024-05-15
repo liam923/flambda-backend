@@ -1222,16 +1222,25 @@ module Element_repr = struct
 
   let classify env loc ty jkind =
     if is_float env ty then Float_element
-    else match Jkind.get_default_value jkind with
-      | Value | Immediate64 | Non_null_value -> Value_element
-      | Immediate -> Imm_element
-      | Float64 -> Unboxed_element Float64
-      | Float32 -> Unboxed_element Float32
-      | Word -> Unboxed_element Word
-      | Bits32 -> Unboxed_element Bits32
-      | Bits64 -> Unboxed_element Bits64
-      | Void -> Element_without_runtime_component { loc; ty }
-      | Any ->
+    else
+      let const_jkind = Jkind.get_default_value jkind in
+      let layout = Jkind.Const.get_layout const_jkind in
+      let sort = Jkind.Layout.Const.get_sort layout in
+      let externality_upper_bound =
+        Jkind.Const.get_externality_upper_bound const_jkind
+      in
+      match sort, externality_upper_bound with
+      | Some Value, (Internal | External64) ->
+        (* CR layouts 2.8: External64 should also give Imm_element *)
+        Value_element
+      | Some Value, External -> Imm_element
+      | Some Float64, _ -> Unboxed_element Float64
+      | Some Float32, _ -> Unboxed_element Float32
+      | Some Word, _ -> Unboxed_element Word
+      | Some Bits32, _ -> Unboxed_element Bits32
+      | Some Bits64, _ -> Unboxed_element Bits64
+      | Some Void, _ -> Element_without_runtime_component { loc; ty }
+      | None, _ ->
           Misc.fatal_error "Element_repr.classify: unexpected Any"
 
   let unboxed_to_flat : unboxed_element -> flat_element = function
@@ -1582,9 +1591,9 @@ let update_decls_jkind_reason decls =
        List.iter update_generalized decl.type_params;
        Btype.iter_type_expr_kind update_generalized decl.type_kind;
        Option.iter update_generalized decl.type_manifest;
-       let reason = Jkind.(Generalized (Some id, decl.type_loc)) in
+       let reason = Jkind.History.Generalized (Some id, decl.type_loc) in
        let new_decl = {decl with type_jkind =
-                                   Jkind.(update_reason decl.type_jkind reason)} in
+                                   Jkind.History.update_reason decl.type_jkind reason} in
        (id, new_decl)
     )
     decls
@@ -3578,7 +3587,7 @@ let report_error ppf = function
     in
     fprintf ppf
       "@[Type %a has layout %a.@ %s may not yet contain types of this layout.@]"
-      Printtyp.type_expr typ Jkind.Sort.format_const sort_const struct_desc
+      Printtyp.type_expr typ Jkind.Sort.Const.format sort_const struct_desc
   | Illegal_mixed_product error -> begin
       match error with
       | Flat_field_expected { boxed_lbl; non_value_lbl } ->
@@ -3670,7 +3679,7 @@ let report_error ppf = function
           argument type with layout %a for upstream compatibility. \
           This error is produced@ due to the use of -extension-universe \
           (no_extensions|upstream_compatible).@]"
-      Jkind.Sort.format_const sort
+      Jkind.Sort.Const.format sort
   | Non_value_sort_not_upstream_compatible sort ->
     fprintf ppf
       "@[External declaration here is not upstream compatible.@ \
@@ -3679,7 +3688,7 @@ let report_error ppf = function
          %a encountered. This error is produced due to@ \
          the use of -extension-universe (no_extensions|\
          upstream_compatible).@]"
-      Jkind.Sort.format_const sort
+      Jkind.Sort.Const.format sort
   | Zero_alloc_attr_unsupported ca ->
       let variety = match ca with
         | Default_zero_alloc  | Check _ -> assert false
