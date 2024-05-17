@@ -77,16 +77,31 @@ module Sort : sig
 end
 
 module Layout : sig
-  type ('type_expr, 'sort) layout =
+  type 'sort layout =
     | Sort of 'sort
     | Any
     | Non_null_value
 
   module Const : sig
-    type 'type_expr t = ('type_expr, Sort.const) layout
+    type t = Sort.const layout
+
+    module Legacy : sig
+      type t =
+        | Any
+        | Value
+        | Void
+        | Immediate64
+        | Immediate
+        | Float64
+        | Float32
+        | Word
+        | Bits32
+        | Bits64
+        | Non_null_value
+    end
   end
 
-  type 'type_expr t = ('type_expr, Sort.t) layout
+  type t = Sort.t layout
 end
 
 module Externality : sig
@@ -100,7 +115,7 @@ module Modes = Mode.Alloc.Const
 
 module Jkind_desc : sig
   type 'type_expr t =
-    { layout : 'type_expr Layout.t;
+    { layout : Layout.t;
       modes_upper_bounds : Modes.t;
       externality_upper_bound : Externality.t
     }
@@ -123,7 +138,7 @@ type 'type_expr t =
 
 module Const : sig
   type 'type_expr t =
-    { layout : 'type_expr Layout.Const.t;
+    { layout : Layout.Const.t;
       modes_upper_bounds : Modes.t;
       externality_upper_bound : Externality.t
     }

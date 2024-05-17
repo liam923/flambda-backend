@@ -58,8 +58,8 @@ type out_value =
   | Oval_variant of string * out_value option
 
 type out_jkind =
-  | Olay_const of unit
-  | Olay_var of string
+  | Ojkind_const of Jkind_types.Layout.Const.Legacy.t
+  | Ojkind_var of string
 
 type out_type_param =
   { oparam_name : string;

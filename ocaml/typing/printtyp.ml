@@ -1251,15 +1251,21 @@ let add_type_to_preparation = prepare_type
 (* Disabled in classic mode when printing an unification error *)
 let print_labels = ref true
 
+let out_jkind_of_const_jkind jkind =
+  Ojkind_const (Jkind.Const.get_legacy_layout jkind)
+
 (* returns None for [value], according to (C2.1) from
    Note [When to print jkind annotations] *)
 let out_jkind_option_of_jkind jkind =
   match Jkind.get jkind with
-  | Const Value -> None
-  | Const jkind -> Some (Olay_const jkind)
+  | Const jkind ->
+    begin match Jkind.Const.equal jkind Jkind.Const.value with
+    | true -> None
+    | false -> Some (out_jkind_of_const_jkind jkind)
+    end
   | Var v -> (* This handles (X1). *)
     if !Clflags.verbose_types
-    then Some (Olay_var (Jkind.Sort.Var.name v))
+    then Some (Ojkind_var (Jkind.Sort.Var.name v))
     else None
 
 let alias_nongen_row mode px ty =
@@ -1827,7 +1833,7 @@ let tree_of_type_decl id decl =
       otype_private = priv;
       otype_jkind =
         Option.map
-          (fun (const, _) -> Olay_const const)
+          (fun (const, _) -> out_jkind_of_const_jkind const)
           jkind_annotation;
       otype_unboxed = unboxed;
       otype_cstrs = constraints }
@@ -2600,8 +2606,8 @@ let trees_of_type_expansion'
       match get_desc ty with
       | Tvar { jkind; _ } | Tunivar { jkind; _ } ->
           let olay = match Jkind.get jkind with
-            | Const clay -> Olay_const clay
-            | Var v      -> Olay_var (Jkind.Sort.var_name v)
+            | Const clay -> out_jkind_of_const_jkind clay
+            | Var v      -> Ojkind_var (Jkind.Sort.Var.name v)
           in
           Otyp_jkind_annot (out, olay)
       | _ ->

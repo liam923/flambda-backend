@@ -324,8 +324,9 @@ let ty_var ~non_gen ppf s =
   pr_var ppf (if non_gen then "_" ^ s else s)
 
 let print_out_jkind ppf = function
-  | Olay_const jkind -> fprintf ppf "%s" (Jkind.Const.to_string jkind)
-  | Olay_var v     -> fprintf ppf "%s" v
+  | Ojkind_const legacy_layout ->
+      fprintf ppf "%s" (Jkind.Const.Layout.Legacy.to_string legacy_layout)
+  | Ojkind_var v -> fprintf ppf "%s" v
 
 let print_out_jkind_annot ppf = function
   | None -> ()

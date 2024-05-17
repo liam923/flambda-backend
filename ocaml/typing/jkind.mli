@@ -48,6 +48,8 @@ module Externality : sig
     | Internal (* managed by the garbage collector *)
 
   val le : t -> t -> bool
+
+  val to_string : t -> string
 end
 
 module Sort : Jkind_intf.Sort with type const = Jkind_types.Sort.const
@@ -61,9 +63,29 @@ type sort = Sort.t
     layout of "classical" OCaml values used by the upstream compiler. *)
 module Layout : sig
   module Const : sig
-    type t = Types.type_expr Jkind_types.Layout.Const.t
+    type t = Jkind_types.Layout.Const.t
 
     val get_sort : t -> Sort.Const.t option
+
+    val to_string : t -> string
+
+    (* CR layouts v2.8: remove this *)
+    module Legacy : sig
+      type t = Jkind_types.Layout.Const.Legacy.t =
+        | Any
+        | Value
+        | Void
+        | Immediate64
+        | Immediate
+        | Float64
+        | Float32
+        | Word
+        | Bits32
+        | Bits64
+        | Non_null_value
+
+      val to_string : t -> string
+    end
   end
 end
 
@@ -137,6 +159,10 @@ module Const : sig
   (** Gets the layout of a constant jkind. Never does mutation. *)
   val get_layout : t -> Layout.Const.t
 
+  (* CR layouts v2.8: remove this *)
+  (** Gets the legacy layout of a constant jkind. Never does mutation. *)
+  val get_legacy_layout : t -> Layout.Const.Legacy.t
+
   (** Gets the maximum modes for types of this constant jkind. *)
   val get_modal_upper_bounds : t -> Mode.Alloc.Const.t
 
@@ -159,7 +185,7 @@ module Const : sig
   val immediate64 : t
 
   (** We know for sure that values of types of this jkind are always immediate *)
-  val immediate :t
+  val immediate : t
 
   (** This is the jkind of unboxed 64-bit floats.  They have sort Float64. *)
   val float64 : t
@@ -175,6 +201,14 @@ module Const : sig
 
   (** This is the jkind of unboxed 64-bit integers. They have sort Bits64. *)
   val bits64 : t
+
+  module Sort : module type of struct
+    include Sort.Const
+  end
+
+  module Layout : module type of struct
+    include Layout.Const
+  end
 end
 
 (** This jkind is the top of the jkind lattice. All types have jkind [any].

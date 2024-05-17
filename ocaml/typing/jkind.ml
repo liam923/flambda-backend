@@ -34,7 +34,7 @@ type type_expr = Types.type_expr
 module Layout = struct
   open Jkind_types.Layout
 
-  type nonrec 'sort layout = (type_expr, 'sort) layout
+  type nonrec 'sort layout = 'sort layout
 
   module Const = struct
     type t = Sort.const layout
@@ -75,6 +75,45 @@ module Layout = struct
       | Sort s -> Some s
       | Non_null_value -> Some Value
       | Any -> None
+
+    let to_string : t -> _ = function
+      | Any -> "any"
+      | Non_null_value -> "non_null_value"
+      | Sort Void -> "void"
+      | Sort Value -> "value"
+      | Sort Float64 -> "float64"
+      | Sort Float32 -> "float32"
+      | Sort Word -> "word"
+      | Sort Bits32 -> "bits32"
+      | Sort Bits64 -> "bits64"
+
+    module Legacy = struct
+      type t = Jkind_types.Layout.Const.Legacy.t =
+        | Any
+        | Value
+        | Void
+        | Immediate64
+        | Immediate
+        | Float64
+        | Float32
+        | Word
+        | Bits32
+        | Bits64
+        | Non_null_value
+
+      let to_string = function
+        | Any -> "any"
+        | Value -> "value"
+        | Void -> "void"
+        | Immediate64 -> "immediate64"
+        | Immediate -> "immediate"
+        | Float64 -> "float64"
+        | Float32 -> "float32"
+        | Word -> "word"
+        | Bits32 -> "bits32"
+        | Bits64 -> "bits64"
+        | Non_null_value -> "non_null_value"
+    end
   end
 
   type t = Sort.t layout
@@ -168,6 +207,11 @@ module Externality = struct
     | External64, (External64 | Internal) | Internal, External64 -> External64
     | Internal, Internal -> Internal
 
+  let to_string = function
+    | External -> "external"
+    | External64 -> "external64"
+    | Internal -> "internal"
+
   module Debug_printers = struct
     open Format
 
@@ -238,6 +282,22 @@ module Const = struct
   let get_modal_upper_bounds const = const.modes_upper_bounds
 
   let get_externality_upper_bound const = const.externality_upper_bound
+
+  let get_legacy_layout
+      { layout; modes_upper_bounds = _; externality_upper_bound } :
+      Layout.Const.Legacy.t =
+    match layout, externality_upper_bound with
+    | Any, _ -> Any
+    | Sort Value, Internal -> Value
+    | Sort Value, External64 -> Immediate64
+    | Sort Value, External -> Immediate
+    | Sort Void, _ -> Void
+    | Sort Float64, _ -> Float64
+    | Sort Float32, _ -> Float32
+    | Sort Word, _ -> Word
+    | Sort Bits32, _ -> Bits32
+    | Sort Bits64, _ -> Bits64
+    | Non_null_value, _ -> Non_null_value
 
   let equal
       { layout = lay1;
@@ -354,7 +414,9 @@ module Const = struct
 
   let non_null_value = { value with layout = Non_null_value }
 
-  let to_string _ = "unimplemented"
+  let to_string jkind =
+    let legacy_layout = get_legacy_layout jkind in
+    Layout.Const.Legacy.to_string legacy_layout
 
   let of_attribute : Builtin_attributes.jkind_attribute -> t = function
     | Immediate -> immediate
@@ -382,6 +444,9 @@ module Const = struct
       | _ -> None)
     | Default | Mod _ | With _ | Kind_of _ ->
       Misc.fatal_error "XXX unimplemented"
+
+  module Sort = Sort.Const
+  module Layout = Layout.Const
 end
 
 module Desc = struct
@@ -592,9 +657,15 @@ let bits64 ~why = fresh_jkind Jkind_desc.bits64 ~why:(Bits64_creation why)
    parameter might effectively be unused.
 *)
 (* CR layouts: When everything is stable, remove this function. *)
-let get_required_layouts_level (_context : History.annotation_context)
-    (_jkind : Const.t) : Language_extension.maturity =
-  Stable
+let get_required_layouts_level (context : History.annotation_context)
+    (jkind : Const.t) : Language_extension.maturity =
+  let legacy_layout = Const.get_legacy_layout jkind in
+  match context, legacy_layout with
+  | ( _,
+      ( Value | Immediate | Immediate64 | Any | Float64 | Float32 | Word
+      | Bits32 | Bits64 ) ) ->
+    Stable
+  | _, (Void | Non_null_value) -> Alpha
 
 (******************************)
 (* construction *)

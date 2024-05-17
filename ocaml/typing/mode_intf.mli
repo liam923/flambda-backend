@@ -33,6 +33,8 @@ module type Lattice = sig
   val meet : t -> t -> t
 
   val print : Format.formatter -> t -> unit
+
+  val to_string : t -> string
 end
 
 type equate_step =
