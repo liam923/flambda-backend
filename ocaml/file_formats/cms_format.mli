@@ -22,9 +22,7 @@ type cms_infos = {
   cms_comments : (string * Location.t) list;
   cms_sourcefile : string option;
   cms_builddir : string;
-  cms_loadpath : Load_path.paths;
   cms_source_digest : string option;
-  cms_initial_env : Env.t;
   cms_uid_to_loc : string Location.loc Shape.Uid.Tbl.t;
   cms_uid_to_attributes : Parsetree.attributes Shape.Uid.Tbl.t;
   cms_impl_shape : Shape.t option; (* None for mli *)
