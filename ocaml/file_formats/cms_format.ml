@@ -28,8 +28,7 @@ type cms_infos = {
   cms_builddir : string;
   cms_loadpath : Load_path.paths;
   cms_source_digest : Digest.t option;
-  cms_initial_env : Env.t;
-  cms_uid_to_loc : string Location.loc Shape.Uid.Tbl.t;
+  cms_uid_to_loc : Location.t Shape.Uid.Tbl.t;
   cms_uid_to_attributes : Parsetree.attributes Shape.Uid.Tbl.t;
   cms_impl_shape : Shape.t option; (* None for mli *)
   cms_ident_occurrences :
@@ -62,7 +61,7 @@ let read filename =
 let toplevel_attributes = ref []
 
 let register_toplevel_attributes uid ~attributes ~loc =
-  toplevel_attributes := (uid, ({txt=""; loc} : _ Location.loc), attributes) :: !toplevel_attributes
+  toplevel_attributes := (uid, loc, attributes) :: !toplevel_attributes
 
 let uid_tables_of_binary_annots binary_annots =
   let cms_uid_to_loc = Types.Uid.Tbl.create 42 in
@@ -104,12 +103,12 @@ let uid_tables_of_binary_annots binary_annots =
         | Class v -> v.ci_id_name, v.ci_attributes
         | Class_type v -> v.ci_id_name, v.ci_attributes
       in
-      Types.Uid.Tbl.add cms_uid_to_loc uid loc;
+      Types.Uid.Tbl.add cms_uid_to_loc uid loc.loc;
       Types.Uid.Tbl.add cms_uid_to_attributes uid attrs
     );
   cms_uid_to_loc, cms_uid_to_attributes
 
-let save_cms filename modname binary_annots sourcefile initial_env shape =
+let save_cms filename modname binary_annots sourcefile _initial_env shape =
   if (!Clflags.binary_annotations_cms && not !Clflags.print_types) then begin
     Misc.output_to_file_via_temporary
        ~mode:[Open_binary] filename
@@ -132,8 +131,6 @@ let save_cms filename modname binary_annots sourcefile initial_env shape =
             cms_builddir = Location.rewrite_absolute_path (Sys.getcwd ());
             cms_loadpath = Load_path.get_paths ();
             cms_source_digest = source_digest;
-            cms_initial_env = if Cmt_format.need_to_clear_env
-              then Env.keep_only_summary initial_env else initial_env;
             cms_uid_to_loc;
             cms_uid_to_attributes;
             cms_impl_shape = shape;
